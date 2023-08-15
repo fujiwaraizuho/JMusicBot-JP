@@ -27,6 +27,7 @@ public class CashCmd extends SlashCommand {
         this.name = "cache";
         this.help = "キャッシュに保存されている曲を表示します。";
         this.guildOnly = true;
+        this.aliases = bot.getConfig().getAliases(this.name);
         this.category = new Category("General");
         this.children = new SlashCommand[]{new DeleteCmd(bot), new ShowCmd(bot)};
         this.botPermissions = new Permission[]{Permission.MESSAGE_ADD_REACTION, Permission.MESSAGE_EMBED_LINKS};

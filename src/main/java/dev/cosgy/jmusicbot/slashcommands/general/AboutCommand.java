@@ -56,6 +56,7 @@ public class AboutCommand extends SlashCommand {
         this.name = "about";
         this.help = "ボットに関する情報を表示します";
         this.guildOnly = false;
+        this.aliases = new String[]{"botinfo", "info"};
         this.perms = perms;
         this.botPermissions = new Permission[]{Permission.MESSAGE_EMBED_LINKS};
     }

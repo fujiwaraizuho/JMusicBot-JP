@@ -75,6 +75,7 @@ public class SpotifyCmd extends MusicCommand {
         this.help = "指定された曲を再生します";
         this.beListening = true;
         this.bePlaying = false;
+        this.aliases = bot.getConfig().getAliases(this.name);
 
         List<OptionData> options = new ArrayList<>();
         options.add(new OptionData(OptionType.STRING, "tracklink", "Spotifyの曲のURL", true));
