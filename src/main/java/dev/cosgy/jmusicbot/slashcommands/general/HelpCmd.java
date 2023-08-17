@@ -33,7 +33,6 @@ public class HelpCmd extends SlashCommand {
         this.bot = bot;
         this.name = "help";
         this.help = "コマンド一覧を表示します。";
-        this.aliases = bot.getConfig().getAliases(this.name);
     }
 
     @Override
