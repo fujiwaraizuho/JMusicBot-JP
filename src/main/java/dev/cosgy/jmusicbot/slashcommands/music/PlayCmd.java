@@ -39,27 +39,36 @@ import dev.cosgy.jmusicbot.slashcommands.DJCommand;
 import dev.cosgy.jmusicbot.slashcommands.MusicCommand;
 import dev.cosgy.jmusicbot.util.Cache;
 import dev.cosgy.jmusicbot.util.StackTraceUtil;
+import net.dv8tion.jda.api.EmbedBuilder;
 import net.dv8tion.jda.api.JDA;
 import net.dv8tion.jda.api.Permission;
 import net.dv8tion.jda.api.entities.Message;
 import net.dv8tion.jda.api.entities.User;
-import net.dv8tion.jda.api.events.interaction.component.ButtonInteractionEvent;
 import net.dv8tion.jda.api.exceptions.PermissionException;
 import net.dv8tion.jda.api.interactions.InteractionHook;
 import net.dv8tion.jda.api.interactions.commands.OptionType;
 import net.dv8tion.jda.api.interactions.commands.build.OptionData;
+import org.json.JSONObject;
 
+import java.awt.*;
 import java.io.IOException;
+import java.net.URI;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 
 /**
  * @author John Grosh <john.a.grosh@gmail.com>
  */
 public class PlayCmd extends MusicCommand {
+    private static final HttpClient httpClient = HttpClient.newBuilder().build();
     private final static String LOAD = "\uD83D\uDCE5"; // 📥
     private final static String CANCEL = "\uD83D\uDEAB"; // 🚫
 
@@ -79,9 +88,6 @@ public class PlayCmd extends MusicCommand {
 
     @Override
     public void doCommand(CommandEvent event) {
-
-
-
         if (event.getArgs().isEmpty() && event.getMessage().getAttachments().isEmpty()) {
             AudioHandler handler = (AudioHandler) event.getGuild().getAudioManager().getSendingHandler();
             if (handler.getPlayer().getPlayingTrack() != null && handler.getPlayer().isPaused()) {
@@ -162,10 +168,143 @@ public class PlayCmd extends MusicCommand {
             event.reply(builder.toString());
             return;
         }
+
         String args = event.getArgs().startsWith("<") && event.getArgs().endsWith(">")
                 ? event.getArgs().substring(1, event.getArgs().length() - 1)
                 : event.getArgs().isEmpty() ? event.getMessage().getAttachments().get(0).getUrl() : event.getArgs();
-        event.reply(loadingEmoji + "`[" + args + "]`を読み込み中です…", m -> bot.getPlayerManager().loadItemOrdered(event.getGuild(), args, new ResultHandler(m, event, false)));
+
+        // Spotify の URL だった場合は割り込んで YouTube Music の URL に変換する処理を行う
+        EmbedBuilder spotifyEmbed = new EmbedBuilder();
+        spotifyEmbed.setTitle("Spotify");
+        spotifyEmbed.setColor(Color.decode("#2ebd59"));
+        spotifyEmbed.setFooter(
+                "Supported by Spotify API.",
+                "https://storage.googleapis.com/spotifynewsroom-jp.appspot.com/1/2020/12/Spotify_Icon_RGB_Green.png"
+        );
+
+        String endpoint = "https://spotify-to-ytmusic-converter-v7df3fplma-an.a.run.app/";
+
+        if (this.isSpotifyTrackUrl(args)) {
+            String trackId = this.extractSpotifyTrackIdFromUrl(args);
+
+            event.replyWarning("Spotify から曲情報を取得しています...");
+
+            HttpRequest trackRequest = HttpRequest.newBuilder()
+                    .GET()
+                    .uri(URI.create(endpoint + "?track_id=" + trackId))
+                    .build();
+
+            try {
+                HttpResponse<String> response = httpClient.send(trackRequest, HttpResponse.BodyHandlers.ofString());
+
+                if (response.statusCode() != 200) {
+                    event.replyError("曲情報を取得できませんでした。");
+                    return;
+                }
+
+                JSONObject json = new JSONObject(response.body());
+
+                JSONObject spotify = json.getJSONObject("spotify");
+                JSONObject youtube = json.getJSONObject("youtube");
+
+                EmbedBuilder spotifyTrackEmbed = new EmbedBuilder();
+                spotifyTrackEmbed.copyFrom(spotifyEmbed);
+                spotifyTrackEmbed.setThumbnail(spotify.getString("thumbnail_url"));
+                spotifyTrackEmbed.addField("曲名", spotify.getString("title"), false);
+                spotifyTrackEmbed.addField("アルバム名", spotify.getString("album"), false);
+                spotifyTrackEmbed.addField("アーティスト名", spotify.getString("artists"), false);
+                event.getTextChannel().sendMessageEmbeds(spotifyTrackEmbed.build()).queue();
+
+                event.reply(":mag_right: YouTube Music で同じ曲を推測します...");
+
+                args = youtube.getString("url");
+            } catch (IOException | InterruptedException e) {
+                event.replyError(e.getMessage());
+                return;
+            }
+        }
+
+        if (this.isSpotifyAlbumUrl(args)) {
+            String albumId = this.extractSpotifyAlbumIdFromUrl(args);
+
+            event.replyWarning("Spotify からアルバム情報を取得しています...");
+
+            HttpRequest albumRequest = HttpRequest.newBuilder()
+                    .GET()
+                    .uri(URI.create(endpoint + "?album_id=" + albumId))
+                    .build();
+
+            try {
+                HttpResponse<String> response = httpClient.send(albumRequest, HttpResponse.BodyHandlers.ofString());
+
+                if (response.statusCode() != 200) {
+                    event.replyError("アルバム情報を取得できませんでした。");
+                    return;
+                }
+
+                JSONObject json = new JSONObject(response.body());
+
+                JSONObject spotify = json.getJSONObject("spotify");
+                JSONObject youtube = json.getJSONObject("youtube");
+
+                EmbedBuilder spotifyTrackEmbed = new EmbedBuilder();
+                spotifyTrackEmbed.copyFrom(spotifyEmbed);
+                spotifyTrackEmbed.setThumbnail(spotify.getString("thumbnail_url"));
+                spotifyTrackEmbed.addField("アルバム名", spotify.getString("title"), false);
+                spotifyTrackEmbed.addField("アーティスト名", spotify.getString("artists"), false);
+                event.getTextChannel().sendMessageEmbeds(spotifyTrackEmbed.build()).queue();
+
+                event.reply(":mag_right: YouTube Music で同じアルバムを推測します...");
+
+                args = youtube.getString("url");
+            } catch (IOException | InterruptedException e) {
+                event.replyError(e.getMessage());
+                return;
+            }
+        }
+
+        String finalArgs = args;
+        event.reply(loadingEmoji + "`[" + args + "]`を読み込み中です…", m -> bot.getPlayerManager().loadItemOrdered(event.getGuild(), finalArgs, new ResultHandler(m, event, false)));
+    }
+
+    public boolean isSpotifyTrackUrl(String url) {
+        Pattern pattern = Pattern.compile("https://open\\.spotify\\.com/(intl-ja/)?track/\\w+");
+        Matcher matcher = pattern.matcher(url.split("\\?")[0]);
+
+        return matcher.matches();
+    }
+
+    public boolean isSpotifyAlbumUrl(String url) {
+        Pattern pattern = Pattern.compile("https://open\\.spotify\\.com/(intl-ja/)?album/\\w+");
+        Matcher matcher = pattern.matcher(url.split("\\?")[0]);
+
+        return matcher.matches();
+    }
+
+    public String extractSpotifyTrackIdFromUrl(String url) {
+        String trackId = null;
+
+        Pattern pattern = Pattern.compile("track/(\\w+)");
+        Matcher matcher = pattern.matcher(url);
+
+        if (matcher.find()) {
+            trackId = matcher.group(1);
+        }
+
+        return trackId;
+    }
+
+    public String extractSpotifyAlbumIdFromUrl(String url) {
+        String albumId = null;
+
+        Pattern pattern = Pattern.compile("album/(\\w+)");
+        Matcher matcher = pattern.matcher(url);
+
+        if (matcher.find()) {
+            albumId = matcher.group(1);
+        }
+
+        return albumId;
     }
 
     @Override
