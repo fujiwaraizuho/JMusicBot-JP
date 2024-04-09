@@ -45,9 +45,9 @@
             <version>5.0.0-beta.20</version>
         </dependency>
         <dependency>
-            <groupId>com.github.Cosgy-Dev</groupId>
-            <artifactId>lavaplayer-cosgy</artifactId>
-            <version>2.0.3-cosgy.2</version>
+            <groupId>com.github.fujiwaraizuho</groupId>
+            <artifactId>lavaplayer</artifactId>
+            <version>2.0.3-fujishan.2</version>
         </dependency>
         <dependency>
             <groupId>com.github.Cosgy-Dev</groupId>
